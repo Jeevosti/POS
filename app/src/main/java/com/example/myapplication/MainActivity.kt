@@ -6,28 +6,56 @@ import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -37,10 +65,12 @@ import org.json.JSONObject
 import java.math.BigDecimal
 
 private val Navy = Color(0xFF142D42)
-private val LightTeal = Color(0xFF007F78)
+private val NormalBlue = Color(0xFF8B0000)
 internal val Teal: Color
     @Composable get() = MaterialTheme.colorScheme.primary
 private val Paper = Color(0xFFF3F6F8)
+private val ZeroQuantityRegex = Regex("0+(\\.0{1,3})?")
+private val NavTabs = listOf("Home", "Stock", "Checkout", "Invoices", "Projects", "Clients", "Logs", "Reports")
 
 class MainActivity : ComponentActivity() {
     private lateinit var model: PosController
@@ -53,36 +83,108 @@ class MainActivity : ComponentActivity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        model = ViewModelProvider(this).get(PosController::class.java)
+        model = ViewModelProvider(this)[PosController::class.java]
         enableEdgeToEdge()
         setContent {
             val colors = if (model.darkMode) {
-                darkColorScheme(primary = Color(0xFF78DCD1), secondary = Color(0xFFC2D9EE), background = Color(0xFF0C141B), surface = Color(0xFF18242F))
+                darkColorScheme(primary = Color(0xFF64B5F6), secondary = Color(0xFFC2D9EE), background = Color(0xFF0C141B), surface = Color(0xFF18242F))
             } else {
-                lightColorScheme(primary = LightTeal, secondary = Navy, background = Paper, surface = Color.White)
+                lightColorScheme(primary = NormalBlue, secondary = Navy, background = Paper, surface = Color.White)
             }
             MaterialTheme(colorScheme = colors) {
                 PosApp(model)
             }
         }
     }
-    override fun onResume() { super.onResume(); poller.postDelayed(poll, 20000) }
-    override fun onPause() { poller.removeCallbacks(poll); super.onPause() }
+    override fun onResume() {
+        super.onResume()
+        poller.removeCallbacks(poll)
+        poller.postDelayed(poll, 20000)
+    }
+    override fun onPause() {
+        poller.removeCallbacks(poll)
+        super.onPause()
+    }
 }
 
 @Composable
 private fun PosApp(model: PosController) {
     var tab by rememberSaveable { mutableStateOf("Home") }
+    var showNotifications by remember { mutableStateOf(false) }
     val pages = rememberSaveableStateHolder()
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { insets ->
         Column(Modifier.fillMaxSize().padding(insets)) {
-            Column(Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(Navy, LightTeal))).padding(20.dp)) {
-                Text("Warehouse POS", color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text(if (model.signedIn) "${model.data?.staffName} · Shared online records" else "Stock • Sales • Projects", color = Color(0xFFBDE6E1))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { model.toggleDarkMode() }) { Text(if (model.darkMode) "Light mode" else "Dark mode", color = Color.White) }
+            Column(Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(Navy, NormalBlue))).padding(20.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Damany Solar POS",
+                        modifier = Modifier.weight(1f),
+                        color = Color.White,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
                     if (model.signedIn) {
+                        IconButton(onClick = { model.toggleDarkMode() }) {
+                            Text(
+                                text = if (model.darkMode) "☀️" else "🌙",
+                                style = MaterialTheme.typography.headlineSmall
+                            )
+                        }
+                        IconButton(onClick = { showNotifications = true }) {
+                            Text(
+                                text = "🔔",
+                                style = MaterialTheme.typography.headlineSmall
+                            )
+                        }
+                    }
+                }
+                if (showNotifications && model.signedIn) {
+                    AlertDialog(
+                        onDismissRequest = { showNotifications = false },
+                        title = { Text("Notifications") },
+                        text = {
+                            val items = model.data?.audit.orEmpty().take(5)
+                            if (items.isEmpty()) {
+                                Text("No notifications yet.")
+                            } else {
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    items.forEach { item ->
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.Top
+                                        ) {
+                                            Text(
+                                                text = "●",
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Text(
+                                                text = item.summary,
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { showNotifications = false }) {
+                                Text("Close")
+                            }
+                        }
+                    )
+                }
+                Text(if (model.signedIn) "${model.data?.staffName} · Shared online records" else "Stock • Sales • Projects", color = Color(0xFFBBDEFB))
+                if (model.signedIn) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         TextButton(onClick = { model.refresh() }, enabled = !model.busy) { Text("Refresh", color = Color.White) }
+                        Spacer(modifier = Modifier.weight(1f))
                         TextButton(onClick = { model.logout() }, enabled = !model.busy) { Text("Sign out", color = Color.White) }
                     }
                 }
@@ -98,7 +200,7 @@ private fun PosApp(model: PosController) {
                     TextButton(onClick = { model.retry() }, enabled = !model.busy) { Text("Retry pending operation") }
                 }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("Home", "Stock", "Checkout", "Invoices", "Projects", "Clients", "Logs", "Reports").forEach { name ->
+                    NavTabs.forEach { name ->
                         FilterChip(selected = tab == name, onClick = { tab = name }, label = { Text(name) })
                     }
                 }
@@ -215,7 +317,7 @@ internal fun methods() = listOf("Cash", "M-Pesa", "Bank").map { it to it }
             OutlinedButton(onClick = { model.restoreLogin() }, enabled = !model.busy, modifier = Modifier.fillMaxWidth()) { Text("Retry saved sign-in") }
             TextButton(onClick = { model.forgetSavedSignIn() }, enabled = !model.busy) { Text("Forget saved sign-in") }
         }
-        Text("Records refresh every 20 seconds while this screen is active. A connection is required to record changes.")
+
     }
 }
 
@@ -242,6 +344,9 @@ internal fun methods() = listOf("Cash", "M-Pesa", "Bank").map { it to it }
 
 @Composable private fun StockScreen(model: PosController, data: PosData) {
     var warehouse by rememberSaveable { mutableStateOf(data.warehouses.firstOrNull()?.id ?: "") }
+    if (warehouse.isEmpty() && data.warehouses.isNotEmpty()) {
+        warehouse = data.warehouses.first().id
+    }
     var search by rememberSaveable { mutableStateOf("") }
     var dialog by remember { mutableStateOf("") }
     Heading("Warehouse stock", "Receive, dispatch or transfer goods with a movement log.")
@@ -257,9 +362,30 @@ internal fun methods() = listOf("Cash", "M-Pesa", "Bank").map { it to it }
     }
     Input("Search name or SKU", search, { search = it })
     data.products.filter { it.name.contains(search,true) || it.sku.contains(search,true) }.forEach { product ->
+        val availInSelected = data.available(product.id, warehouse)
+        val totalAvail = data.totalAvailable(product.id)
+        val currentWarehouseName = data.warehouse(warehouse)
         RecordCard(product.name) {
             Text("${product.sku} · ${MoneyMath.money(product.price)} / ${product.unit}")
-            Text("Available: ${MoneyMath.units(data.available(product.id,warehouse))} ${product.unit}", color = Teal, fontWeight = FontWeight.Bold)
+            if (totalAvail.signum() == 0) {
+                Text(
+                    "Available: 0 ${product.unit} (Tap 'Receive' above to enter stock)",
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.Bold
+                )
+            } else if (availInSelected.signum() == 0) {
+                Text(
+                    "Available in $currentWarehouseName: 0 ${product.unit} (${MoneyMath.units(totalAvail)} ${product.unit} in other warehouses)",
+                    color = MaterialTheme.colorScheme.secondary,
+                    fontWeight = FontWeight.Bold
+                )
+            } else {
+                Text(
+                    "Available in $currentWarehouseName: ${MoneyMath.units(availInSelected)} ${product.unit}",
+                    color = Teal,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
     if (data.products.isEmpty()) Text("An administrator must add products before stock can be received.")
@@ -274,10 +400,13 @@ internal fun methods() = listOf("Cash", "M-Pesa", "Bank").map { it to it }
     var name by remember { mutableStateOf("") }; var sku by remember { mutableStateOf("") }
     var unit by remember { mutableStateOf("pcs") }; var price by remember { mutableStateOf("") }
     var openingQty by remember { mutableStateOf("") }; var warehouseId by remember { mutableStateOf(defaultWarehouse) }
+    if (warehouseId.isBlank() && data.warehouses.isNotEmpty()) {
+        warehouseId = data.warehouses.first().id
+    }
     FormDialog("Add product",model,close,{ checked(model) {
         require(name.isNotBlank() && sku.isNotBlank()) { "Enter a product name and unique SKU." }
         val cents = MoneyMath.cents(price); require(cents > 0) { "Price must be positive." }
-        val quantity = if (openingQty.isBlank() || openingQty.trim().matches(Regex("0+(\\.0{1,3})?"))) BigDecimal.ZERO else MoneyMath.quantity(openingQty)
+        val quantity = if (openingQty.isBlank() || openingQty.trim().matches(ZeroQuantityRegex)) BigDecimal.ZERO else MoneyMath.quantity(openingQty)
         require(quantity.signum()==0 || data.supportsOpeningStock) { "Use Receive to enter stock, or ask your administrator to update the database first." }
         if (quantity.signum() > 0) require(warehouseId.isNotBlank()) { "Choose a warehouse for the opening stock." }
         model.command("add_product",payload("name" to name.trim(),"sku" to sku.trim(),"unit" to unit.trim(),"price_cents" to cents,
@@ -288,8 +417,8 @@ internal fun methods() = listOf("Cash", "M-Pesa", "Bank").map { it to it }
         if (data.supportsOpeningStock) {
             Input("Opening stock quantity (optional)",openingQty,{ openingQty=it },true)
             Picker("Opening stock warehouse",data.warehouses.map { it.id to it.name },warehouseId,{ warehouseId=it })
-            Text("Enter the goods already on hand. Leave blank or zero if you will receive them later.")
-        } else Text("After saving this product, use Receive to enter its warehouse quantity.")
+            Text("Enter physical stock on hand now. If left blank or 0, tap 'Receive' on the Stock screen after saving.")
+        } else Text("After saving this product, tap the 'Receive' button on the Stock screen to enter its quantity.")
     }
 }
 @Composable private fun WarehouseDialog(model: PosController, close: () -> Unit) {
@@ -323,7 +452,11 @@ internal fun methods() = listOf("Cash", "M-Pesa", "Bank").map { it to it }
 }
 
 @Composable private fun CheckoutScreen(model: PosController, data: PosData) {
-    var clientId by rememberSaveable { mutableStateOf("") }; var warehouseId by rememberSaveable { mutableStateOf(data.warehouses.firstOrNull()?.id ?: "") }
+    var clientId by rememberSaveable { mutableStateOf("") }
+    var warehouseId by rememberSaveable { mutableStateOf(data.warehouses.firstOrNull()?.id ?: "") }
+    if (warehouseId.isEmpty() && data.warehouses.isNotEmpty()) {
+        warehouseId = data.warehouses.first().id
+    }
     var saleType by rememberSaveable { mutableStateOf("cash") }; var paid by rememberSaveable { mutableStateOf("0") }
     var dueDate by rememberSaveable { mutableStateOf("") }; var method by rememberSaveable { mutableStateOf("Cash") }; var reference by rememberSaveable { mutableStateOf("") }
     var productId by rememberSaveable { mutableStateOf("") }; var qty by rememberSaveable { mutableStateOf("1") }
